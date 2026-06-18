@@ -4,7 +4,6 @@ import { DashboardOutlined, AppstoreOutlined, TeamOutlined, UploadOutlined } fro
 import zhCN from 'antd/locale/zh_CN';
 import { useTalentStore } from './store';
 import { initDefaultData } from './db';
-import { restoreSyncFile, isFileSystemAccessSupported, onSyncStatusChange } from './lib/fileSync';
 import Dashboard from './pages/Dashboard';
 import GridPage from './pages/GridPage';
 import TalentPool from './pages/TalentPool';
@@ -32,33 +31,16 @@ const menuItems = [
 function App() {
   const [currentPage, setCurrentPage] = useState<PageKey>('dashboard');
   const [initLoading, setInitLoading] = useState(true);
-  const { loadData, refreshSyncStatus } = useTalentStore();
+  const { loadData } = useTalentStore();
 
   useEffect(() => {
     const init = async () => {
       await initDefaultData();
-
-      if (isFileSystemAccessSupported()) {
-        const result = await restoreSyncFile();
-        if (result === 'restored') {
-          await loadData();
-        } else if (result === 'permission-denied') {
-          await loadData();
-        } else {
-          await loadData();
-        }
-      } else {
-        await loadData();
-      }
-
-      await refreshSyncStatus();
+      await loadData();
       setInitLoading(false);
     };
     init();
-
-    const unsub = onSyncStatusChange(() => { refreshSyncStatus(); });
-    return () => unsub();
-  }, [loadData, refreshSyncStatus]);
+  }, [loadData]);
 
   if (initLoading) {
     return (
