@@ -75,6 +75,7 @@ export function isFileSystemAccessSupported(): boolean {
 async function verifyPermission(
   handle: FileSystemFileHandle,
   readWrite: boolean = true,
+  autoRequest: boolean = false,
 ): Promise<boolean> {
   const opts: any = { mode: readWrite ? 'readwrite' : 'read' };
   // @ts-ignore - queryPermission 存在于 Chromium 实现
@@ -82,16 +83,15 @@ async function verifyPermission(
     // @ts-ignore
     const queryResult = await (handle as any).queryPermission(opts);
     if (queryResult === 'granted') return true;
-    if (queryResult === 'prompt') {
+    if (queryResult === 'prompt' && autoRequest) {
       // @ts-ignore
       const requestResult = await (handle as any).requestPermission(opts);
       return requestResult === 'granted';
     }
-    return false; // denied
+    return false; // denied 或 prompt 但未自动请求
   }
   // Fallback: 直接尝试 requestPermission
-  // @ts-ignore
-  if ((handle as any).requestPermission) {
+  if (autoRequest && (handle as any).requestPermission) {
     // @ts-ignore
     const result = await (handle as any).requestPermission(opts);
     return result === 'granted';
@@ -199,8 +199,13 @@ export async function restoreSyncFile(): Promise<'restored' | 'no-handle' | 'per
     const handle = await idbGet<FileSystemFileHandle>(HANDLE_KEY);
     if (!handle) return 'no-handle';
 
-    const granted = await verifyPermission(handle, true);
-    if (!granted) return 'permission-denied';
+    // 页面加载时不主动请求权限（需要用户手势），只检查是否已授权
+    const granted = await verifyPermission(handle, true, false);
+    if (!granted) {
+      syncStatus = 'idle';
+      notify();
+      return 'permission-denied';
+    }
 
     // 读取文件数据
     const data = await readFromFile(handle);
@@ -214,11 +219,9 @@ export async function restoreSyncFile(): Promise<'restored' | 'no-handle' | 'per
     return 'restored';
   } catch (err) {
     console.error('[fileSync] restoreSyncFile failed:', err);
-    // handle 可能已失效，清理掉
-    await idbDel(HANDLE_KEY);
-    syncStatus = 'error';
+    syncStatus = 'idle';
     notify();
-    return 'no-handle';
+    return 'permission-denied';
   }
 }
 
@@ -264,7 +267,7 @@ async function doPush(): Promise<void> {
     const handle = await idbGet<FileSystemFileHandle>(HANDLE_KEY);
     if (!handle) return;
 
-    const granted = await verifyPermission(handle, true);
+    const granted = await verifyPermission(handle, true, true);
     if (!granted) {
       syncStatus = 'error';
       notify();
@@ -292,7 +295,7 @@ export async function pullFromFile(): Promise<boolean> {
     const handle = await idbGet<FileSystemFileHandle>(HANDLE_KEY);
     if (!handle) return false;
 
-    const granted = await verifyPermission(handle, false);
+    const granted = await verifyPermission(handle, false, true);
     if (!granted) return false;
 
     syncStatus = 'loading';
@@ -329,15 +332,23 @@ export async function clearSyncFile(): Promise<void> {
 // ── 检查是否已配置同步 ──
 export async function isSyncConfigured(): Promise<boolean> {
   if (!isFileSystemAccessSupported()) return false;
-  const handle = await idbGet<FileSystemFileHandle>(HANDLE_KEY);
-  return !!handle;
+  try {
+    const handle = await idbGet<FileSystemFileHandle>(HANDLE_KEY);
+    return !!handle;
+  } catch {
+    return false;
+  }
 }
 
 // ── 获取文件名（用于 UI 显示）──
 export async function getSyncFileName(): Promise<string | null> {
   const handle = await idbGet<FileSystemFileHandle>(HANDLE_KEY);
   if (!handle) return null;
-  return handle.name;
+  try {
+    return handle.name;
+  } catch {
+    return 'talent-map-sync.json';
+  }
 }
 
 // ── 降级方案：导出同步文件（不支持 File System Access API 的浏览器）──

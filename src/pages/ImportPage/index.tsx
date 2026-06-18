@@ -7,7 +7,7 @@ import ImportWizard from '../../components/ImportWizard';
 import FileSyncSettings from '../../components/FileSyncSettings';
 import { PerfLevelMap, CapLevelMap, PotLevelMap, GridModel, GridModelMap, type Person } from '../../types';
 import { getQuadrantName } from '../../utils/grid';
-import { isFileSystemAccessSupported } from '../../lib/fileSync';
+import { isFileSystemAccessSupported, openSyncFile } from '../../lib/fileSync';
 import { onSyncStatusChange, getSyncStatus } from '../../lib/fileSync';
 import { isSyncConfigured, getSyncFileName } from '../../lib/fileSync';
 
@@ -158,36 +158,62 @@ const ImportPage: React.FC = () => {
     <div>
       {/* 文件同步状态 */}
       {fsSupported && syncConfigured ? (
-        <Alert
-          message={
-            <Space>
-              <CheckCircleOutlined style={{ color: '#52c41a' }} />
-              <Text strong>文件同步已启用</Text>
-              <AntTag
-                color={syncSt.status === 'saving' || syncSt.status === 'loading' ? 'processing' :
-                       syncSt.status === 'error' ? 'error' :
-                       syncSt.status === 'success' ? 'success' : 'default'}
-                icon={(syncSt.status === 'saving' || syncSt.status === 'loading') ? <SyncOutlined spin /> : undefined}
-              >
-                {syncSt.status === 'saving' ? '保存中' :
-                 syncSt.status === 'loading' ? '加载中' :
-                 syncSt.status === 'success' ? '已同步' :
-                 syncSt.status === 'error' ? '同步异常' : '待机'}
-              </AntTag>
-              {syncFileName && (
-                <Text type="secondary" style={{ fontSize: 11 }}>
-                  {syncFileName}
-                </Text>
-              )}
-            </Space>
-          }
-          type="success"
-          style={{ marginBottom: 16 }}
-          action={
-            <Button size="small" onClick={() => setCloudOpen(true)}>管理</Button>
-          }
-        />
-      ) : (
+        syncSt.status === 'error' || syncSt.status === 'idle' ? (
+          <Alert
+            message={
+              <Space>
+                <CloudOutlined style={{ color: '#faad14' }} />
+                <Text strong>文件同步需要重新授权</Text>
+                <AntTag color="warning">权限未授予</AntTag>
+              </Space>
+            }
+            description="同步文件存在但浏览器权限未授予。点击下方按钮重新选择同步文件以授权。"
+            type="warning"
+            showIcon
+            icon={<InfoCircleOutlined />}
+            style={{ marginBottom: 16 }}
+            action={
+              <Button size="small" type="primary" onClick={async () => {
+                const ok = await openSyncFile();
+                if (ok) {
+                  message.success('已重新授权并加载数据');
+                  await refreshSyncConfig();
+                  await loadData();
+                }
+              }}>
+                重新授权
+              </Button>
+            }
+          />
+        ) : (
+          <Alert
+            message={
+              <Space>
+                <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                <Text strong>文件同步已启用</Text>
+                <AntTag
+                  color={syncSt.status === 'saving' || syncSt.status === 'loading' ? 'processing' :
+                         syncSt.status === 'success' ? 'success' : 'default'}
+                  icon={(syncSt.status === 'saving' || syncSt.status === 'loading') ? <SyncOutlined spin /> : undefined}
+                >
+                  {syncSt.status === 'saving' ? '保存中' :
+                   syncSt.status === 'loading' ? '加载中' :
+                   syncSt.status === 'success' ? '已同步' : '待机'}
+                </AntTag>
+                {syncFileName && (
+                  <Text type="secondary" style={{ fontSize: 11 }}>
+                    {syncFileName}
+                  </Text>
+                )}
+              </Space>
+            }
+            type="success"
+            style={{ marginBottom: 16 }}
+            action={
+              <Button size="small" onClick={() => setCloudOpen(true)}>管理</Button>
+            }
+          />
+        )
         <Alert
           message="未启用文件同步"
           description={

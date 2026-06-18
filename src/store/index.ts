@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { type Person, type Department, type Tag, type FilterConditions, GridModel, PerfLevel } from '../types';
 import { getAllPersons, getAllDepartments, getAllTags, addPerson, updatePerson, deletePerson, bulkDeletePersons, addDepartment, deleteDepartment, addTag as addTagDb, exportAllData, restoreAllData } from '../db';
-import { pushToFile } from '../lib/fileSync';
+import { pushToFile, isSyncConfigured as checkSyncConfigured, getSyncFileName, onSyncStatusChange, getSyncStatus } from '../lib/fileSync';
 
 interface TalentStore {
   // 数据
@@ -14,11 +14,18 @@ interface TalentStore {
   currentModel: GridModel;
   filters: FilterConditions;
   selectedPersonId: string | null;
+  // 同步状态
+  syncConfigured: boolean;
+  syncFileName: string | null;
+  syncStatusText: string;
 
   // 操作方法
   setCurrentModel: (model: GridModel) => void;
   setFilters: (filters: Partial<FilterConditions>) => void;
   setSelectedPerson: (id: string | null) => void;
+
+  // 同步操作方法
+  refreshSyncStatus: () => Promise<void>;
 
   // 数据操作方法
   loadData: () => Promise<void>;
@@ -50,6 +57,9 @@ export const useTalentStore = create<TalentStore>((set, get) => ({
   currentModel: GridModel.PERF_CAP,
   filters: { deptId: null, searchText: '', perfLevel: null, tag: null },
   selectedPersonId: null,
+  syncConfigured: false,
+  syncFileName: null,
+  syncStatusText: '待机',
 
   setCurrentModel: (model) => set({ currentModel: model }),
 
@@ -58,6 +68,25 @@ export const useTalentStore = create<TalentStore>((set, get) => ({
   })),
 
   setSelectedPerson: (id) => set({ selectedPersonId: id }),
+
+  refreshSyncStatus: async () => {
+    try {
+      const configured = await checkSyncConfigured();
+      const name = configured ? await getSyncFileName() : null;
+      const st = getSyncStatus();
+      const statusMap: Record<string, string> = {
+        idle: '待机', saving: '保存中', loading: '加载中',
+        success: '已同步', error: '同步异常',
+      };
+      set({
+        syncConfigured: configured,
+        syncFileName: name,
+        syncStatusText: statusMap[st.status] || '待机',
+      });
+    } catch {
+      set({ syncConfigured: false, syncFileName: null, syncStatusText: '待机' });
+    }
+  },
 
   loadData: async () => {
     set({ loading: true, error: null });
@@ -144,7 +173,7 @@ export const useTalentStore = create<TalentStore>((set, get) => ({
     set((state) => ({
       persons: state.persons.map((p) => (p.id === updated.id ? updated : p)),
     }));
-    pushToCloud();
+    pushToFile();
   },
 
   addDepartment: async (dept) => {

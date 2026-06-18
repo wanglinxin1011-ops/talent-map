@@ -4,7 +4,7 @@ import { DashboardOutlined, AppstoreOutlined, TeamOutlined, UploadOutlined } fro
 import zhCN from 'antd/locale/zh_CN';
 import { useTalentStore } from './store';
 import { initDefaultData } from './db';
-import { restoreSyncFile, isFileSystemAccessSupported } from './lib/fileSync';
+import { restoreSyncFile, isFileSystemAccessSupported, onSyncStatusChange } from './lib/fileSync';
 import Dashboard from './pages/Dashboard';
 import GridPage from './pages/GridPage';
 import TalentPool from './pages/TalentPool';
@@ -32,30 +32,33 @@ const menuItems = [
 function App() {
   const [currentPage, setCurrentPage] = useState<PageKey>('dashboard');
   const [initLoading, setInitLoading] = useState(true);
-  const { loadData } = useTalentStore();
+  const { loadData, refreshSyncStatus } = useTalentStore();
 
   useEffect(() => {
     const init = async () => {
       await initDefaultData();
 
-      // 如果支持 File System Access API，尝试恢复同步文件
       if (isFileSystemAccessSupported()) {
         const result = await restoreSyncFile();
         if (result === 'restored') {
-          // 从同步文件恢复了数据，加载到 store
+          await loadData();
+        } else if (result === 'permission-denied') {
           await loadData();
         } else {
-          // 没有同步文件或权限被拒，正常加载本地
           await loadData();
         }
       } else {
         await loadData();
       }
 
+      await refreshSyncStatus();
       setInitLoading(false);
     };
     init();
-  }, [loadData]);
+
+    const unsub = onSyncStatusChange(() => { refreshSyncStatus(); });
+    return () => unsub();
+  }, [loadData, refreshSyncStatus]);
 
   if (initLoading) {
     return (
