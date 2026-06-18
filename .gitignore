@@ -3,4 +3,21 @@ dist
 .vite
 *.local
 .DS_Store
+
+# 项目无关文件
 人才盘点-测试数据.xlsx
+ai_infra_ic_leader.json
+candidate_details.json
+full_candidate_data.json
+raw_data.json
+raw_data_complete.json
+check_missing.cjs
+extract_all.cjs
+extract_data.cjs
+extract_leader.cjs
+extract_tables.cjs
+zipit.cjs
+mapping_full_text.txt
+mapping_nodes.txt
+web_crawl_data.md
+resumes/
